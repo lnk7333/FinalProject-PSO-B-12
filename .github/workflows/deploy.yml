@@ -34,32 +34,32 @@ jobs:
       # 3. BUILD: Create the container image locally in the runner
       - name: Build Application Image
         run: |
-          docker build -t asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }} .
-          docker tag asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }} asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:latest
+          docker build -t asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:${{ github.sha }} .
+          docker tag asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:${{ github.sha }} asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:latest
 
       # 4. SECOPS TRACK GATE: Audit the image for vulnerabilities before pushing
       - name: Run Trivy Security Scan
-        uses: aquasec/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
-          image-ref: 'asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }}'
+          image-ref: 'asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:${{ github.sha }}'
           format: 'table'
-          exit-code: '1'  # Breaks the pipeline build if high-risk bugs are found
+          exit-code: '1'
           ignore-unfixed: true
           severity: 'HIGH,CRITICAL'
 
       # 5. PUSH: Upload verified container to GCP Artifact Registry
       - name: Push Verified Image to Registry
         run: |
-          docker push asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }}
-          docker push asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:latest
+          docker push asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:${{ github.sha }}
+          docker push asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:latest
 
       # 6. DEPLOYMENT: Trigger serverless update in Cloud Run
       - name: Deploy to GCP Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: guestbook-web
-          image: asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }}
+          image: asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:${{ github.sha }}
           region: asia-southeast2
-          flags: '--allow-unauthenticated'  # Makes the guestbook publicly accessible
+          flags: '--allow-unauthenticated'
           env_vars: |
             MONGO_URI=${{ secrets.MONGO_URI }}
