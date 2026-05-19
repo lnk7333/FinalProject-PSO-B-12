@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud-Native Digital Guestbook</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-5" style="max-width: 800px;">
+        
+        <div class="text-center mb-5">
+            <h1 class="display-5 fw-bold text-primary">Buku Tamu Digital</h1>
+            <p class="lead text-muted">PSO-B Kelompok 12</p>
+            <span class="badge bg-dark fs-5">Total System Visits: {{ visit_count }}</span>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Sign the Guestbook</h5>
+                <form action="/create" method="POST">
+                    <div class="mb-3">
+                        <input type="text" name="name" class="form-control" placeholder="Your Name" required>
+                    </div>
+                    <div class="mb-3">
+                        <textarea name="message" class="form-control" rows="3" placeholder="Leave a message..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Submit Entry</button>
+                </form>
+            </div>
+        </div>
+
+        <h4 class="mb-3">Recent Messages</h4>
+        {% for entry in entries %}
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="fw-bold text-secondary mb-1">{{ entry.name }}</h6>
+                        <p class="card-text text-dark" id="text-{{ entry._id }}">{{ entry.message }}</p>
+                        
+                        <form action="/update/{{ entry._id }}" method="POST" id="edit-form-{{ entry._id }}" class="d-none mt-2">
+                            <div class="input-group">
+                                <input type="text" name="message" class="form-control" value="{{ entry.message }}" required>
+                                <button type="submit" class="btn btn-success btn-sm">Save</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleEdit('{{ entry._id }}')">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-warning btn-sm" onclick="toggleEdit('{{ entry._id }}')">Edit</button>
+                        <form action="/delete/{{ entry._id }}" method="POST" onsubmit="return confirm('Delete this message?');">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-muted text-center">No messages yet. Be the first to sign!</p>
+        {% endfor %}
+
+    </div>
+
+    <script>
+        function toggleEdit(id) {
+            const textElement = document.getElementById(`text-${id}`);
+            const formElement = document.getElementById(`edit-form-${id}`);
+            textElement.classList.toggle('d-none');
+            formElement.classList.toggle('d-none');
+        }
+    </script>
+</body>
+</html>
