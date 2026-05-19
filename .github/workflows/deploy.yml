@@ -1,0 +1,65 @@
+name: DevSecOps Cloud-Native Deployment
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  id-token: write  
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. AUTHENTICATION: Keyless login via Workload Identity Federation
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: 'access_token'
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # 2. REGISTRY LOGIN: Configure Docker to trust GCP Artifact Registry
+      - name: Login to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: asia-southeast2-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      # 3. BUILD: Create the container image locally in the runner
+      - name: Build Application Image
+        run: |
+          docker build -t asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }} .
+          docker tag asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }} asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:latest
+
+      # 4. SECOPS TRACK GATE: Audit the image for vulnerabilities before pushing
+      - name: Run Trivy Security Scan
+        uses: aquasec/trivy-action@master
+        with:
+          image-ref: 'asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'  # Breaks the pipeline build if high-risk bugs are found
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+
+      # 5. PUSH: Upload verified container to GCP Artifact Registry
+      - name: Push Verified Image to Registry
+        run: |
+          docker push asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }}
+          docker push asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:latest
+
+      # 6. DEPLOYMENT: Trigger serverless update in Cloud Run
+      - name: Deploy to GCP Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: guestbook-web
+          image: asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/surabaya-repo/guestbook-web:${{ github.sha }}
+          region: asia-southeast2
+          flags: '--allow-unauthenticated'  # Makes the guestbook publicly accessible
+          env_vars: |
+            MONGO_URI=${{ secrets.MONGO_URI }}
