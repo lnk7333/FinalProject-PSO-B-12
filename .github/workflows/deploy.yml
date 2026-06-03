@@ -109,8 +109,8 @@ jobs:
     name: 4. Deploy to Production (Cloud Run)
     runs-on: ubuntu-latest
     needs: build-and-scan
-    # CONDITION: Only deploy if the current target branch is explicitly 'main'
-    if: github.ref == 'refs/heads/main'
+    # CONDITION: Only deploy if the current target branch is explicitly 'main' or 'staging'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
