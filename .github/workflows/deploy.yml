@@ -1,4 +1,4 @@
-name: Automated DevSecOps Promotion Pipeline
+name: DevSecOps Pipeline
 
 on:
   push:
@@ -99,7 +99,7 @@ jobs:
           
           # Switch to main, merge staging into it, and push back to GitHub
           git checkout main
-          git merge staging --no-ff -m "ci: auto-promote verified build from staging [skip ci]"
+          git merge staging --no-ff -m "ci: automatically update using the verified the build from staging"
           git push origin main
 
   # ==========================================
