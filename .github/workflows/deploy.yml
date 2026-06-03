@@ -1,20 +1,48 @@
-name: DevSecOps Cloud-Native Deployment
+name: Automated DevSecOps Promotion Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "staging" ]
 
 permissions:
-  contents: read
-  id-token: write  
+  contents: write  # Crucial: Allows the pipeline to write/push code changes back to GitHub
+  id-token: write  # Crucial: Allows keyless WIF login to GCP
+
 jobs:
-  deploy:
+  # ==========================================
+  # JOB 1: CODE QUALITY & LINTING CHECK
+  # ==========================================
+  lint:
+    name: 1. Code Quality & Linting
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. AUTHENTICATION: Keyless login via Workload Identity Federation
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Linter
+        run: pip install flake8
+
+      - name: Run Flake8 Code Linting
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  # ==========================================
+  # JOB 2: BUILD & VULNERABILITY CHECK
+  # ==========================================
+  build-and-scan:
+    name: 2. Container Build & Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
@@ -23,7 +51,6 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # 2. REGISTRY LOGIN: Configure Docker to trust GCP Artifact Registry
       - name: Login to Artifact Registry
         uses: docker/login-action@v3
         with:
@@ -31,13 +58,11 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
 
-      # 3. BUILD: Create the container image locally in the runner
       - name: Build Application Image
         run: |
           docker build -t asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:${{ github.sha }} .
           docker tag asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:${{ github.sha }} asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:latest
 
-      # 4. SECOPS TRACK GATE: Audit the image for vulnerabilities before pushing
       - name: Run Trivy Security Scan
         uses: aquasecurity/trivy-action@v0.35.0
         with:
@@ -47,13 +72,57 @@ jobs:
           ignore-unfixed: true
           severity: 'HIGH,CRITICAL'
 
-      # 5. PUSH: Upload verified container to GCP Artifact Registry
       - name: Push Verified Image to Registry
         run: |
           docker push asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:${{ github.sha }}
           docker push asia-southeast2-docker.pkg.dev/${{ steps.auth.outputs.project_id }}/pso-image-repo/guestbook-web:latest
 
-      # 6. DEPLOYMENT: Trigger serverless update in Cloud Run
+  # ==========================================
+  # JOB 3: MERGING FROM STAGING BRANCH TO MAIN BRANCH
+  # ==========================================
+  auto-promote:
+    name: 3. Auto-Promote Staging to Main
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    # CONDITION: Only run this job if the push event happened on the 'staging' branch
+    if: github.ref == 'refs/heads/staging'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches full history so branches can merge cleanly
+
+      - name: Automated Git Merge & Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Switch to main, merge staging into it, and push back to GitHub
+          git checkout main
+          git merge staging --no-ff -m "ci: auto-promote verified build from staging [skip ci]"
+          git push origin main
+
+  # ==========================================
+  # JOB 4: DEPLOY TO CLOUD RUN
+  # ==========================================
+  deploy:
+    name: 4. Deploy to Production (Cloud Run)
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    # CONDITION: Only deploy if the current target branch is explicitly 'main'
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: 'access_token'
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
       - name: Deploy to GCP Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
