@@ -1,16 +1,16 @@
 # Cloud-Native Digital Guestbook (Buku Tamu Digital)
 
-A server-rendered digital guestbook built with **Flask** and **MongoDB**, containerized with **Docker**, and deployed to **Google Cloud Run** via a DevSecOps GitHub Actions pipeline. Visitors can view a visit counter and leave, edit, or delete guestbook messages.
+A server-rendered digital guestbook built with **Flask** and **MongoDB**, containerized with **Docker**, and deployed to **Google Cloud Run** via a DevSecOps GitHub Actions pipeline. Authenticated users can view a visit counter and leave, edit, or delete their own guestbook messages (admins have full control).
 
 ## Tech Stack
 
-- **Backend:** Python Flask
+- **Backend:** Python Flask + Flask-Login
 - **Frontend:** Bootstrap 5 (server-rendered Jinja2 templates)
 - **Database:** MongoDB (Atlas)
 - **Containerization:** Docker (Python 3.11-slim)
 - **Production Server:** Gunicorn
+- **Auth:** Flask-Login (session-based) + Werkzeug (PBKDF2 password hashing) + Workload Identity Federation (keyless GCP authentication for CI/CD)
 - **CI/CD:** GitHub Actions → Trivy (security scan) → Artifact Registry → Cloud Run
-- **Auth:** Workload Identity Federation (keyless GCP authentication)
 
 ## Prerequisites
 
@@ -22,10 +22,13 @@ A server-rendered digital guestbook built with **Flask** and **MongoDB**, contai
 
 ## Environment Variables
 
-| Variable     | Description                  | Default                                        |
-| ------------ | ---------------------------- | ---------------------------------------------- |
-| `MONGO_URI`  | MongoDB connection string    | `mongodb://localhost:27017/guestbook_db`        |
-| `PORT`       | Application listen port      | `5000` (overridden by Cloud Run at runtime)     |
+| Variable          | Description                           | Default                                        |
+| ----------------- | ------------------------------------- | ---------------------------------------------- |
+| `MONGO_URI`       | MongoDB connection string             | `mongodb://localhost:27017/guestbook_db`        |
+| `PORT`            | Application listen port               | `5000` (overridden by Cloud Run at runtime)     |
+| `SECRET_KEY`      | Flask session signing key             | Auto-generated (set a fixed value for production) |
+| `ADMIN_USERNAME`  | Username for auto-seeded admin        | (none — no admin seeded if unset)              |
+| `ADMIN_PASSWORD`  | Password for auto-seeded admin        | (none — must be set with `ADMIN_USERNAME`)     |
 
 ---
 
@@ -53,11 +56,65 @@ $env:MONGO_URI = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/gues
 # macOS / Linux
 # export MONGO_URI="mongodb+srv://..."
 
-# 5. Run the application (Flask development server)
+# 5. (Optional) Seed an admin user on first run
+$env:ADMIN_USERNAME = "admin"
+$env:ADMIN_PASSWORD = "admin123"
+
+# 6. Run the application (Flask development server)
 python app.py
 ```
 
 Open `http://localhost:5000` in your browser (Flask default port).
+
+### Testing the Auth System
+
+1. Visit `http://localhost:5000` — unauthenticated users see a prompt to log in
+2. Click **Register** and fill in First Name, Last Name, Nickname, and Password
+   - Password must be at least 8 characters with 1 letter and 1 non-letter
+3. Log in with your nickname and password
+4. Post a message — the display name is auto-set from your First + Last Name
+5. Edit/delete buttons only appear on your own messages
+6. The admin user (if seeded) can edit/delete **all** messages
+
+---
+
+## Auth System
+
+The application uses **Flask-Login** for session-based authentication and **Werkzeug** (PBKDF2+HMAC-SHA-256) for password hashing. Passwords are never stored in plaintext.
+
+### User Schema
+
+Each user document in MongoDB stores:
+
+| Field           | Description                                    |
+| --------------- | ---------------------------------------------- |
+| `first_name`    | Display first name (shown on messages)         |
+| `last_name`     | Display last name (shown on messages)          |
+| `nickname`      | Unique login identifier (3-30 alphanumeric)    |
+| `password_hash` | PBKDF2 hashed password                         |
+| `role`          | `"user"` or `"admin"`                          |
+
+### Access Rules
+
+| Action                | Guest | Regular User | Admin |
+| --------------------- | ----- | ------------ | ----- |
+| View guestbook        | ✅    | ✅           | ✅    |
+| Create entry          | ❌    | ✅           | ✅    |
+| Edit own entry        | ❌    | ✅           | ✅    |
+| Edit others' entry    | ❌    | ❌           | ✅    |
+| Delete own entry      | ❌    | ✅           | ✅    |
+| Delete others' entry  | ❌    | ❌           | ✅    |
+
+### Registration Rules
+
+- **First Name** — required, letters and spaces only
+- **Last Name** — optional, letters and spaces only
+- **Nickname** — required, 3-30 characters (letters, numbers, underscores), case-insensitive uniqueness
+- **Password** — minimum 8 characters, must contain at least 1 letter and 1 non-letter (number/symbol)
+
+### Admin Seeding
+
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables to auto-create an admin account on first startup. The admin can edit and delete any guestbook entry.
 
 ---
 
@@ -176,11 +233,16 @@ gcloud run deploy guestbook-web \
 
 In your GitHub repository, go to **Settings → Secrets and variables → Actions** and add the following secrets:
 
-| Secret                           | Value / How to Get It                                                                                      |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Run: `gcloud iam workload-identity-pools providers describe github-provider --location=global --workload-identity-pool=github-pool --format="value(name)"` |
-| `GCP_SERVICE_ACCOUNT`            | The service account email: `github-actions-deployer@<PROJECT_ID>.iam.gserviceaccount.com`                  |
-| `MONGO_URI`                      | Your MongoDB Atlas connection string: `mongodb+srv://<username>:<password>@<cluster>.mongodb.net/guestbook_db?retryWrites=true&w=majority` |
+| Secret                           | Required | Value / How to Get It                                                                                      |
+| -------------------------------- | :------: | ---------------------------------------------------------------------------------------------------------- |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | ✅ Yes   | Run: `gcloud iam workload-identity-pools providers describe github-provider --location=global --workload-identity-pool=github-pool --format="value(name)"` |
+| `GCP_SERVICE_ACCOUNT`            | ✅ Yes   | The service account email: `github-actions-deployer@<PROJECT_ID>.iam.gserviceaccount.com`                  |
+| `MONGO_URI`                      | ✅ Yes   | Your MongoDB Atlas connection string: `mongodb+srv://<username>:<password>@<cluster>.mongodb.net/guestbook_db?retryWrites=true&w=majority` |
+| `SECRET_KEY`                     | ❌ No    | A random secret string for Flask session signing. Generate with: `python -c "import secrets; print(secrets.token_hex(32))"`. Auto-generated if not set, but a fixed value is recommended for production. |
+| `ADMIN_USERNAME`                 | ❌ No    | Username for the auto-seeded admin (e.g., `admin`). If not set, no admin account is created — register manually. |
+| `ADMIN_PASSWORD`                 | ❌ No    | Password for the auto-seeded admin. Must be set together with `ADMIN_USERNAME`.                             |
+
+> **⚠️ Without `MONGO_URI`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, or `GCP_SERVICE_ACCOUNT` the app will fail** at startup or during deployment. The other three are optional (the app has fallbacks).
 
 ### Step 6: Deploy
 
@@ -243,11 +305,15 @@ The pipeline resolves the GCP project ID dynamically at runtime — no manual pr
 ```
 FinalProject-PSO-B-12/
 ├── .github/workflows/
-│   └── deploy.yml          # CI/CD pipeline (GitHub Actions)
+│   └── deploy.yml            # CI/CD pipeline (GitHub Actions)
 ├── templates/
-│   └── index.html           # Frontend template (Bootstrap 5 + Jinja2)
-├── app.py                   # Flask application (routes: index, create, update, delete)
-├── Dockerfile               # Container image definition (Python 3.11-slim + Gunicorn)
-├── requirements.txt         # Python dependencies
-└── README.md                # This file
+│   ├── index.html            # Guestbook page (Bootstrap 5 + Jinja2)
+│   ├── login.html            # Login form
+│   └── register.html         # Registration form (with live validation + password strength meter)
+├── app.py                    # Flask application (routes: index, create, update, delete, login, register, logout)
+├── Dockerfile                # Container image definition (Python 3.11-slim + Gunicorn)
+├── FEATURES.md               # Feature specs for team implementation
+├── requirements.txt          # Python dependencies
+├── .gitignore                # Python + environment ignores
+└── README.md                 # This file
 ```
