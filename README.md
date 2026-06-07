@@ -238,11 +238,11 @@ In your GitHub repository, go to **Settings → Secrets and variables → Action
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | ✅ Yes   | Run: `gcloud iam workload-identity-pools providers describe github-provider --location=global --workload-identity-pool=github-pool --format="value(name)"` |
 | `GCP_SERVICE_ACCOUNT`            | ✅ Yes   | The service account email: `github-actions-deployer@<PROJECT_ID>.iam.gserviceaccount.com`                  |
 | `MONGO_URI`                      | ✅ Yes   | Your MongoDB Atlas connection string: `mongodb+srv://<username>:<password>@<cluster>.mongodb.net/guestbook_db?retryWrites=true&w=majority` |
-| `SECRET_KEY`                     | ❌ No    | A random secret string for Flask session signing. Generate with: `python -c "import secrets; print(secrets.token_hex(32))"`. Auto-generated if not set, but a fixed value is recommended for production. |
+| `SECRET_KEY`                     | ✅ Yes (recommended) | A random secret string for Flask session signing. Generate with: `python -c "import secrets; print(secrets.token_hex(32))"`. If not set, a random key is generated on each restart, logging everyone out. |
 | `ADMIN_USERNAME`                 | ❌ No    | Username for the auto-seeded admin (e.g., `admin`). If not set, no admin account is created — register manually. |
 | `ADMIN_PASSWORD`                 | ❌ No    | Password for the auto-seeded admin. Must be set together with `ADMIN_USERNAME`.                             |
 
-> **⚠️ Without `MONGO_URI`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, or `GCP_SERVICE_ACCOUNT` the app will fail** at startup or during deployment. The other three are optional (the app has fallbacks).
+> **⚠️ Without `MONGO_URI`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, or `GCP_SERVICE_ACCOUNT` the app will fail** at startup or during deployment. `SECRET_KEY` is strongly recommended in production to persist sessions across restarts.
 
 ### Step 6: Deploy
 
