@@ -129,6 +129,60 @@ def logout():
     return redirect(url_for('index'))
 
 
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm = request.form.get('confirm')
+
+        # Validate name fields (same rules as register)
+        if not first_name or not re.match(r'^[A-Za-z ]+$', first_name):
+            flash('First name must contain only letters and spaces.', 'danger')
+            return redirect(url_for('profile'))
+        if last_name and not re.match(r'^[A-Za-z ]+$', last_name):
+            flash('Last name must contain only letters and spaces.', 'danger')
+            return redirect(url_for('profile'))
+
+        # Fetch current user document to verify current password
+        user_doc = users_collection.find_one({"_id": ObjectId(current_user.get_id())})
+        if not user_doc or not check_password_hash(user_doc["password_hash"], current_password):
+            flash('Incorrect current password.', 'danger')
+            return redirect(url_for('profile'))
+
+        update_data = {
+            "first_name": first_name,
+            "last_name": last_name
+        }
+
+        # If new_password: validate it (min 8, letter + non-letter), hash it, update
+        if new_password:
+            if len(new_password) < 8:
+                flash('Password must be at least 8 characters.', 'danger')
+                return redirect(url_for('profile'))
+            if not re.search(r'[A-Za-z]', new_password) or not re.search(r'[^A-Za-z]', new_password):
+                flash('Password must contain at least 1 letter and 1 non-letter character (number/symbol).', 'danger')
+                return redirect(url_for('profile'))
+            if new_password != confirm:
+                flash('Passwords do not match.', 'danger')
+                return redirect(url_for('profile'))
+            
+            update_data["password_hash"] = generate_password_hash(new_password)
+
+        users_collection.update_one(
+            {"_id": ObjectId(current_user.get_id())},
+            {"$set": update_data}
+        )
+
+        flash('Profile updated!', 'success')
+        return redirect(url_for('profile'))
+
+    return render_template('profile.html')
+
+
 # --- Main Routes ---
 
 @app.route('/', methods=['GET'])
