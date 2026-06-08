@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+from bson.errors import InvalidId
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -210,6 +211,46 @@ def delete(id):
 
     entries_collection.delete_one({"_id": ObjectId(id)})
     flash('Entry deleted.', 'success')
+    return redirect(url_for('index'))
+
+
+@app.route('/like/<id>', methods=['POST'])
+@login_required
+def like_entry(id):
+    try:
+        entry_id = ObjectId(id)
+    except InvalidId:
+        flash('Entry not found.', 'danger')
+        return redirect(url_for('index'))
+
+    entry = entries_collection.find_one({"_id": entry_id})
+    if not entry:
+        flash('Entry not found.', 'danger')
+        return redirect(url_for('index'))
+
+    liked_by = entry.get('liked_by', [])
+    user_id_str = current_user.get_id()
+
+    if user_id_str in liked_by:
+        # Unlike: remove user from liked_by and decrement likes (floor at 0)
+        current_likes = entry.get('likes', 0)
+        if current_likes > 0:
+            entries_collection.update_one(
+                {"_id": entry_id},
+                {"$pull": {"liked_by": user_id_str}, "$inc": {"likes": -1}}
+            )
+        else:
+            entries_collection.update_one(
+                {"_id": entry_id},
+                {"$pull": {"liked_by": user_id_str}, "$set": {"likes": 0}}
+            )
+    else:
+        # Like: add user to liked_by and increment likes
+        entries_collection.update_one(
+            {"_id": entry_id},
+            {"$push": {"liked_by": user_id_str}, "$inc": {"likes": 1}}
+        )
+
     return redirect(url_for('index'))
 
 
