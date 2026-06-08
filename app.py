@@ -8,6 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24).hex())
+app.config['SESSION_COOKIE_NAME'] = '__session'
 
 # Fetch MongoDB URI from environment variables (DevSecOps Best Practice)
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/guestbook_db")
@@ -56,6 +57,13 @@ if ADMIN_USERNAME and ADMIN_PASSWORD:
             "role": "admin"
         })
         print(f"Seeded admin user: {ADMIN_USERNAME}")
+
+
+@app.after_request
+def set_cache_control(response):
+    if response.headers.get('Set-Cookie'):
+        response.headers['Cache-Control'] = 'private'
+    return response
 
 
 # --- Auth Routes ---
