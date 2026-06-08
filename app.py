@@ -275,6 +275,48 @@ def delete(id):
     return redirect(url_for('index'))
 
 
+@app.route('/admin')
+@login_required
+def admin_dashboard():
+    if current_user.role != 'admin':
+        flash('Access denied.', 'danger')
+        return redirect(url_for('index'))
+
+    total_users = users_collection.count_documents({})
+    total_entries = entries_collection.count_documents({})
+    counter = counter_collection.find_one({"_id": "global_visits"})
+    total_visits = counter["count"] if counter else 0
+
+    users = list(users_collection.find())
+    for user in users:
+        user["_id"] = str(user["_id"])
+        user["message_count"] = entries_collection.count_documents(
+            {"user_id": ObjectId(user["_id"])}
+        )
+
+    return render_template('admin.html', users=users, total_users=total_users,
+                           total_entries=total_entries, total_visits=total_visits)
+
+
+@app.route('/admin/toggle-role/<user_id>', methods=['POST'])
+@login_required
+def toggle_role(user_id):
+    if current_user.role != 'admin':
+        flash('Access denied.', 'danger')
+        return redirect(url_for('index'))
+    target = users_collection.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        flash('User not found.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+    new_role = "admin" if target["role"] == "user" else "user"
+    users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"role": new_role}}
+    )
+    flash(f'{target["nickname"]} is now a {new_role}.', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
 if __name__ == '__main__':
     # Cloud Run binds to the PORT environment variable automatically
     port = int(os.environ.get("PORT", 5000))
