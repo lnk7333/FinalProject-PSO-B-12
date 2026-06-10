@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+from bson.errors import InvalidId
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -137,6 +138,60 @@ def logout():
     return redirect(url_for('index'))
 
 
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm = request.form.get('confirm')
+
+        # Validate name fields (same rules as register)
+        if not first_name or not re.match(r'^[A-Za-z ]+$', first_name):
+            flash('First name must contain only letters and spaces.', 'danger')
+            return redirect(url_for('profile'))
+        if last_name and not re.match(r'^[A-Za-z ]+$', last_name):
+            flash('Last name must contain only letters and spaces.', 'danger')
+            return redirect(url_for('profile'))
+
+        # Fetch current user document to verify current password
+        user_doc = users_collection.find_one({"_id": ObjectId(current_user.get_id())})
+        if not user_doc or not check_password_hash(user_doc["password_hash"], current_password):
+            flash('Incorrect current password.', 'danger')
+            return redirect(url_for('profile'))
+
+        update_data = {
+            "first_name": first_name,
+            "last_name": last_name
+        }
+
+        # If new_password: validate it (min 8, letter + non-letter), hash it, update
+        if new_password:
+            if len(new_password) < 8:
+                flash('Password must be at least 8 characters.', 'danger')
+                return redirect(url_for('profile'))
+            if not re.search(r'[A-Za-z]', new_password) or not re.search(r'[^A-Za-z]', new_password):
+                flash('Password must contain at least 1 letter and 1 non-letter character (number/symbol).', 'danger')
+                return redirect(url_for('profile'))
+            if new_password != confirm:
+                flash('Passwords do not match.', 'danger')
+                return redirect(url_for('profile'))
+            
+            update_data["password_hash"] = generate_password_hash(new_password)
+
+        users_collection.update_one(
+            {"_id": ObjectId(current_user.get_id())},
+            {"$set": update_data}
+        )
+
+        flash('Profile updated!', 'success')
+        return redirect(url_for('profile'))
+
+    return render_template('profile.html')
+
+
 # --- Main Routes ---
 
 @app.route('/', methods=['GET'])
@@ -219,6 +274,86 @@ def delete(id):
     entries_collection.delete_one({"_id": ObjectId(id)})
     flash('Entry deleted.', 'success')
     return redirect(url_for('index'))
+
+
+@app.route('/like/<id>', methods=['POST'])
+@login_required
+def like_entry(id):
+    try:
+        entry_id = ObjectId(id)
+    except InvalidId:
+        flash('Entry not found.', 'danger')
+        return redirect(url_for('index'))
+
+    entry = entries_collection.find_one({"_id": entry_id})
+    if not entry:
+        flash('Entry not found.', 'danger')
+        return redirect(url_for('index'))
+
+    liked_by = entry.get('liked_by', [])
+    user_id_str = current_user.get_id()
+
+    if user_id_str in liked_by:
+        # Unlike: remove user from liked_by and decrement likes (floor at 0)
+        current_likes = entry.get('likes', 0)
+        if current_likes > 0:
+            entries_collection.update_one(
+                {"_id": entry_id},
+                {"$pull": {"liked_by": user_id_str}, "$inc": {"likes": -1}}
+            )
+        else:
+            entries_collection.update_one(
+                {"_id": entry_id},
+                {"$pull": {"liked_by": user_id_str}, "$set": {"likes": 0}}
+            )
+    else:
+        # Like: add user to liked_by and increment likes
+        entries_collection.update_one(
+            {"_id": entry_id},
+            {"$push": {"liked_by": user_id_str}, "$inc": {"likes": 1}}
+        )
+
+    return redirect(url_for('index'))
+@app.route('/admin')
+@login_required
+def admin_dashboard():
+    if current_user.role != 'admin':
+        flash('Access denied.', 'danger')
+        return redirect(url_for('index'))
+
+    total_users = users_collection.count_documents({})
+    total_entries = entries_collection.count_documents({})
+    counter = counter_collection.find_one({"_id": "global_visits"})
+    total_visits = counter["count"] if counter else 0
+
+    users = list(users_collection.find())
+    for user in users:
+        user["_id"] = str(user["_id"])
+        user["message_count"] = entries_collection.count_documents(
+            {"user_id": ObjectId(user["_id"])}
+        )
+
+    return render_template('admin.html', users=users, total_users=total_users,
+                           total_entries=total_entries, total_visits=total_visits)
+
+
+@app.route('/admin/toggle-role/<user_id>', methods=['POST'])
+@login_required
+def toggle_role(user_id):
+    if current_user.role != 'admin':
+        flash('Access denied.', 'danger')
+        return redirect(url_for('index'))
+    target = users_collection.find_one({"_id": ObjectId(user_id)})
+    if not target:
+        flash('User not found.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+    new_role = "admin" if target["role"] == "user" else "user"
+    users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"role": new_role}}
+    )
+    flash(f'{target["nickname"]} is now a {new_role}.', 'success')
+    return redirect(url_for('admin_dashboard'))
 
 
 if __name__ == '__main__':
