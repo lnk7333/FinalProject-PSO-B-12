@@ -178,7 +178,6 @@ def profile():
             if new_password != confirm:
                 flash('Passwords do not match.', 'danger')
                 return redirect(url_for('profile'))
-            
             update_data["password_hash"] = generate_password_hash(new_password)
 
         users_collection.update_one(
@@ -314,6 +313,8 @@ def like_entry(id):
         )
 
     return redirect(url_for('index'))
+
+
 @app.route('/admin')
 @login_required
 def admin_dashboard():

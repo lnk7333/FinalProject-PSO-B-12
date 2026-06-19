@@ -3,6 +3,10 @@ name: DevSecOps Pipeline
 on:
   push:
     branches: [ "main", "staging" ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
 
 permissions:
   contents: write  # Crucial: Allows the pipeline to write/push code changes back to GitHub
