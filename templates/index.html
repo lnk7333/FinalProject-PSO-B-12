@@ -104,16 +104,16 @@
                         <form action="/like/{{ entry._id }}" method="POST" class="d-inline">
                             {% if current_user.get_id() in entry.get('liked_by', []) %}
                             <button type="submit" class="btn btn-primary btn-sm">
-                                👍 {{ entry.get('likes', 0) }}
+                                👍🏻 {{ entry.get('likes', 0) }}
                             </button>
                             {% else %}
                             <button type="submit" class="btn btn-outline-primary btn-sm">
-                                👍 {{ entry.get('likes', 0) }}
+                                👍🏻 {{ entry.get('likes', 0) }}
                             </button>
                             {% endif %}
                         </form>
                         {% else %}
-                        <span class="text-muted small">👍 {{ entry.get('likes', 0) }}</span>
+                        <span class="text-muted small">👍🏻 {{ entry.get('likes', 0) }}</span>
                         {% endif %}
                     </div>
 
