@@ -1,3 +1,40 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
 .env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+.pytest_cache/
+.cache/
+htmlcov/
+cov.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+cover/
+
+# IDE and Editor settings
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI Coding Assistant Settings, Logs & CLI
+.gemini/
+.agents/
+antigravity-cli/
+.antigravity/

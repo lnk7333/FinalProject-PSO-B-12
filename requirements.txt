@@ -5,3 +5,7 @@ dnspython==2.6.1
 gunicorn==22.0.0
 jaraco.context==6.1.0
 wheel==0.46.2
+pytest==8.1.1
+pytest-cov==4.1.0
+mongomock==4.1.2
+setuptools==69.2.0

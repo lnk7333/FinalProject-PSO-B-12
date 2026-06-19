@@ -78,6 +78,46 @@ Open `http://localhost:5000` in your browser (Flask default port).
 
 ---
 
+## Running Unit Tests
+
+Unit tests are implemented using `pytest` and database mocking with `mongomock`. No active MongoDB connection is required to run the tests.
+
+### Running Tests Locally
+
+1. **Activate virtual environment:**
+   ```bash
+   venv\Scripts\activate  # Windows
+   # source venv/bin/activate  # macOS / Linux
+   ```
+
+2. **Install testing dependencies:**
+   Ensure dependencies from `requirements.txt` are installed:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Execute pytest:**
+   ```bash
+   python -m pytest
+   ```
+
+4. **Run tests with coverage report:**
+   To see test coverage metrics in the terminal:
+   ```bash
+   python -m pytest --cov=app --cov-report=term-missing
+   ```
+
+### Test Coverage
+
+The test suite covers:
+- **Routes & Views:** Index page (visit counter increments), Profile Settings page, Admin Dashboard.
+- **Authentication:** Registration field validation (first name, password rules), login validation, session expiration/logout.
+- **CRUD Operations:** Guestbook entry creation, update validation, deletion ownership verification.
+- **Interactions:** Adding and removing entry reactions (likes) and handling invalid entry IDs.
+- **Admin Settings:** Demoting/promoting user roles and admin dashboard permission protection.
+
+---
+
 ## Auth System
 
 The application uses **Flask-Login** for session-based authentication and **Werkzeug** (PBKDF2+HMAC-SHA-256) for password hashing. Passwords are never stored in plaintext.
@@ -270,9 +310,10 @@ The pipeline is defined in `.github/workflows/deploy.yml` and triggers automatic
 | Job | Name | Description |
 |-----|------|-------------|
 | 1 | **Code Quality & Linting** | Runs Flake8 on the codebase to catch syntax and logic errors |
-| 2 | **Container Build & Security Scan** | Builds the Docker image, authenticates to GCP via WIF, scans with Trivy (fails on HIGH/CRITICAL), and pushes the verified image to Artifact Registry |
-| 3 | **Auto-Promote Staging to Main** | (Staging branch only) Merges the verified staging build into `main` with `--no-ff` |
-| 4 | **Deploy to Production** | Deploys the verified image to Cloud Run with `--allow-unauthenticated` |
+| 2 | **Unit Testing** | Runs unit tests using Pytest with in-memory MongoMock database and displays test coverage |
+| 3 | **Container Build & Security Scan** | Builds the Docker image, authenticates to GCP via WIF, scans with Trivy (fails on HIGH/CRITICAL), and pushes the verified image to Artifact Registry |
+| 4 | **Auto-Promote Staging to Main** | (Staging branch only) Merges the verified staging build into `main` with `--no-ff` |
+| 5 | **Deploy to Production** | Deploys the verified image to Cloud Run with `--allow-unauthenticated` |
 
 The pipeline resolves the GCP project ID dynamically at runtime — no manual project ID configuration is needed in the workflow file.
 
@@ -303,16 +344,19 @@ The pipeline resolves the GCP project ID dynamically at runtime — no manual pr
 ```
 FinalProject-PSO-B-12/
 ├── .github/workflows/
-│   └── deploy.yml            # CI/CD pipeline (GitHub Actions)
-├── templates/
-│   ├── index.html            # Guestbook page (Bootstrap 5 + Jinja2)
-│   ├── login.html            # Login form
-│   └── register.html         # Registration form (with live validation + password strength meter)
-├── app.py                    # Flask application (routes: index, create, update, delete, login, register, logout)
-├── Dockerfile                # Container image definition (Python 3.11-slim + Gunicorn)
+│   └── deploy.yml            # DevSecOps CI/CD pipeline (Linting, Unit Testing, Container Build, Trivy Scan, Deploy to Cloud Run)
 ├── docs/
-│   └── FEATURES.md           # Feature specs for team implementation
-├── requirements.txt          # Python dependencies
-├── .gitignore                # Python + environment ignores
-└── README.md                 # This file
+│   └── FEATURES.md           # Product features and implementation overview
+├── templates/
+│   ├── admin.html            # Admin dashboard template (role management & system metrics)
+│   ├── index.html            # Guestbook display and message posting (Bootstrap 5 + Jinja2)
+│   ├── login.html            # Login form
+│   ├── profile.html          # Profile settings template (name and password updates)
+│   └── register.html         # User registration (live validation & password strength meter)
+├── app.py                    # Main Flask application and database routing logic
+├── test_app.py               # Unit tests covering routes, authentication, CRUD, reactions, and admin roles
+├── Dockerfile                # Multi-stage production container definition (Python 3.11-slim + Gunicorn)
+├── requirements.txt          # Python packages and testing dependencies (pytest, mongomock)
+├── .gitignore                # Version control exclusions (virtualenvs, pytest cache, secret keys)
+└── README.md                 # Project documentation (this file)
 ```
