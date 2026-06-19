@@ -238,18 +238,19 @@ In your GitHub repository, go to **Settings → Secrets and variables → Action
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | ✅ Yes   | Run: `gcloud iam workload-identity-pools providers describe github-provider --location=global --workload-identity-pool=github-pool --format="value(name)"` |
 | `GCP_SERVICE_ACCOUNT`            | ✅ Yes   | The service account email: `github-actions-deployer@<PROJECT_ID>.iam.gserviceaccount.com`                  |
 | `MONGO_URI`                      | ✅ Yes   | Your MongoDB Atlas connection string: `mongodb+srv://<username>:<password>@<cluster>.mongodb.net/guestbook_db?retryWrites=true&w=majority` |
-| `SECRET_KEY`                     | ✅ Yes (recommended) | A random secret string for Flask session signing. Generate with: `python -c "import secrets; print(secrets.token_hex(32))"`. If not set, a random key is generated on each restart, logging everyone out. |
+| `SECRET_KEY`                     | ✅ Yes | A random secret string for Flask session signing. Generate with: `python -c "import secrets; print(secrets.token_hex(32))"`. Without this, sessions reset on every deploy. |
 | `ADMIN_USERNAME`                 | ❌ No    | Username for the auto-seeded admin (e.g., `admin`). If not set, no admin account is created — register manually. |
 | `ADMIN_PASSWORD`                 | ❌ No    | Password for the auto-seeded admin. Must be set together with `ADMIN_USERNAME`.                             |
 
-> **⚠️ Without `MONGO_URI`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, or `GCP_SERVICE_ACCOUNT` the app will fail** at startup or during deployment. `SECRET_KEY` is strongly recommended in production to persist sessions across restarts.
+> **⚠️ Without `MONGO_URI`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, or `SECRET_KEY` the app will fail** at startup or during deployment. `ADMIN_USERNAME` and `ADMIN_PASSWORD` are optional.
 
 ### Step 6: Deploy
 
-Push your code to the `main` branch:
+Push your code to the `main` or `staging` branch:
 
 ```bash
 git push origin main
+# or: git push origin staging
 ```
 
 The GitHub Actions pipeline will automatically:
@@ -262,19 +263,16 @@ The GitHub Actions pipeline will automatically:
 
 ## CI/CD Pipeline (Detailed)
 
-The pipeline is defined in `.github/workflows/deploy.yml` and triggers automatically on every push to the `main` branch.
+The pipeline is defined in `.github/workflows/deploy.yml` and triggers automatically on every push to the `main` or `staging` branch.
 
-### Pipeline Stages
+### Pipeline Jobs
 
-| Stage | Action | Description |
-|-------|--------|-------------|
-| 1 | **Checkout** | Fetches the latest code from the repository |
-| 2 | **GCP Authentication** | Keyless login via Workload Identity Federation (no static keys) |
-| 3 | **Docker Login** | Authenticates Docker to Google Artifact Registry using OAuth2 access token |
-| 4 | **Build** | Builds the Docker image and tags it with the commit SHA + `latest` |
-| 5 | **Security Scan** | Runs Trivy to audit for HIGH/CRITICAL vulnerabilities; pipeline fails if any are found |
-| 6 | **Push** | Pushes the verified image to Artifact Registry |
-| 7 | **Deploy** | Deploys the new image to Cloud Run with `--allow-unauthenticated` and `--max-instances=1` |
+| Job | Name | Description |
+|-----|------|-------------|
+| 1 | **Code Quality & Linting** | Runs Flake8 on the codebase to catch syntax and logic errors |
+| 2 | **Container Build & Security Scan** | Builds the Docker image, authenticates to GCP via WIF, scans with Trivy (fails on HIGH/CRITICAL), and pushes the verified image to Artifact Registry |
+| 3 | **Auto-Promote Staging to Main** | (Staging branch only) Merges the verified staging build into `main` with `--no-ff` |
+| 4 | **Deploy to Production** | Deploys the verified image to Cloud Run with `--allow-unauthenticated` |
 
 The pipeline resolves the GCP project ID dynamically at runtime — no manual project ID configuration is needed in the workflow file.
 
@@ -312,7 +310,8 @@ FinalProject-PSO-B-12/
 │   └── register.html         # Registration form (with live validation + password strength meter)
 ├── app.py                    # Flask application (routes: index, create, update, delete, login, register, logout)
 ├── Dockerfile                # Container image definition (Python 3.11-slim + Gunicorn)
-├── FEATURES.md               # Feature specs for team implementation
+├── docs/
+│   └── FEATURES.md           # Feature specs for team implementation
 ├── requirements.txt          # Python dependencies
 ├── .gitignore                # Python + environment ignores
 └── README.md                 # This file

@@ -136,3 +136,6 @@ jobs:
           flags: '--allow-unauthenticated'
           env_vars: |
             MONGO_URI=${{ secrets.MONGO_URI }}
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
+            ADMIN_USERNAME=${{ secrets.ADMIN_USERNAME }}
+            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
